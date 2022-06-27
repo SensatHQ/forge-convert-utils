@@ -11,7 +11,8 @@
   },
   "scripts": {
     "build": "tsc",
-    "docs": "typedoc --out docs src"
+    "docs": "typedoc --out docs src",
+    "prepare": "tsc"
   },
   "author": "Petr Broz <petr.broz@autodesk.com>",
   "license": "MIT",
