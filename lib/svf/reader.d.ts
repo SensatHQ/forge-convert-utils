@@ -159,7 +159,7 @@ export declare class Reader {
      * @returns {Promise<(SVF.IMesh | SVF.ILines | SVF.IPoints | null)[]>} List of parsed meshes,
      * lines, or points (or null values for unsupported mesh types).
      */
-    readMeshPack(packNumber: number): Promise<(SVF.IMesh | SVF.ILines | SVF.IPoints | null)[]>;
+    readMeshPack(packNumber: number, logger: any): Promise<(SVF.IMesh | SVF.ILines | SVF.IPoints | null)[]>;
     /**
      * Retrieves, parses, and iterates over all SVF materials.
      * @async

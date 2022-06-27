@@ -295,7 +295,7 @@ export class Reader {
         for (let i = 0, len = this.getMeshPackCount(); i < len; i++) {
             tasks.push((async (id: number) => {
                 log(`Reading meshpack #${id}...`);
-                output.meshpacks[id] = await this.readMeshPack(id);
+                output.meshpacks[id] = await this.readMeshPack(id, log);
                 log(`Reading meshpack #${id}: done`);
             })(i));
         }
@@ -464,13 +464,13 @@ export class Reader {
      * @returns {Promise<(SVF.IMesh | SVF.ILines | SVF.IPoints | null)[]>} List of parsed meshes,
      * lines, or points (or null values for unsupported mesh types).
      */
-    async readMeshPack(packNumber: number): Promise<(SVF.IMesh | SVF.ILines | SVF.IPoints | null)[]> {
+    async readMeshPack(packNumber: number, logger: any): Promise<(SVF.IMesh | SVF.ILines | SVF.IPoints | null)[]> {
         const meshPackAsset = this.findAsset({ type: SVF.AssetType.PackFile, uri: `${packNumber}.pf` });
         if (!meshPackAsset) {
             throw new Error(`Mesh packfile ${packNumber}.pf not found.`);
         }
         const buffer = await this.getAsset(meshPackAsset.URI);
-        return Array.from(parseMeshes(buffer));
+        return Array.from(parseMeshes(buffer, logger));
     }
 
     /**

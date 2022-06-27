@@ -9,7 +9,7 @@ import { IMesh, ILines, IPoints, IUVMap } from './schema';
  * @returns {Iterable<IMesh | ILines | IPoints | null>} Instances of parsed meshes, or null values
  * if the mesh cannot be parsed (and to maintain the indices used in {@link IGeometry}).
  */
-export function *parseMeshes(buffer: Buffer): Iterable<IMesh | ILines | IPoints | null> {
+export function *parseMeshes(buffer: Buffer, logger?: any): Iterable<IMesh | ILines | IPoints | null> {
     const pfr = new PackFileReader(buffer);
     for (let i = 0, len = pfr.numEntries(); i < len; i++) {
         const entry = pfr.seekEntry(i);
@@ -21,7 +21,7 @@ export function *parseMeshes(buffer: Buffer): Iterable<IMesh | ILines | IPoints 
                 yield parseMeshOCTM(pfr);
                 break;
             case 'Autodesk.CloudPlatform.Lines':
-                yield parseLines(pfr, entry.version);
+                yield parseLines(pfr, entry.version, logger);
                 break;
             case 'Autodesk.CloudPlatform.Points':
                 yield parsePoints(pfr, entry.version);
@@ -159,7 +159,7 @@ function parseMeshRAW(pfr: PackFileReader): IMesh {
     return mesh;
 }
 
-function parseLines(pfr: PackFileReader, entryVersion: number): ILines {
+function parseLines(pfr: PackFileReader, entryVersion: number, logger?: any): ILines {
     console.assert(entryVersion >= 2);
 
     const vertexCount = pfr.getUint16();

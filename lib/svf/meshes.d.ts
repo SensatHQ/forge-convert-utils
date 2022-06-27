@@ -8,5 +8,5 @@ import { IMesh, ILines, IPoints } from './schema';
  * @returns {Iterable<IMesh | ILines | IPoints | null>} Instances of parsed meshes, or null values
  * if the mesh cannot be parsed (and to maintain the indices used in {@link IGeometry}).
  */
-export declare function parseMeshes(buffer: Buffer): Iterable<IMesh | ILines | IPoints | null>;
+export declare function parseMeshes(buffer: Buffer, logger?: any): Iterable<IMesh | ILines | IPoints | null>;
 //# sourceMappingURL=meshes.d.ts.map
