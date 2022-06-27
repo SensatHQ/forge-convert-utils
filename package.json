@@ -13,7 +13,7 @@
   "scripts": {
     "build": "tsc",
     "docs": "typedoc --out docs src",
-    "install": "tsc"
+    "prepare": "tsc"
   },
   "author": "Petr Broz <petr.broz@autodesk.com>",
   "license": "MIT",
