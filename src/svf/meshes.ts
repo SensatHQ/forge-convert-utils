@@ -167,6 +167,7 @@ function parseLines(pfr: PackFileReader, entryVersion: number): ILines {
     const boundsCount = pfr.getUint16(); // Ignoring for now
     const lineWidth = (entryVersion > 2) ? pfr.getFloat32() : 1.0;
     const hasColors = pfr.getUint8() !== 0;
+    console.warn(`LINE COLOR VALUE: ${hasColors}`);
     const lines: ILines = {
         isLines: true,
         vcount: vertexCount,
