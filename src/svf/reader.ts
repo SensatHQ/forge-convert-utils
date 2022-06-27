@@ -87,7 +87,7 @@ export class Scene implements IMF.IScene {
                     getIndices: () => mesh.indices,
                     getVertices: () => mesh.vertices,
                     getColors: () => mesh.colors,
-                    getBounds: () => new Uint16Array()
+                    getBounds: () => mesh.bounds
                 };
                 return geom;
             } else if ('isPoints' in mesh) {

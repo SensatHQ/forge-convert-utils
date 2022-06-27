@@ -151,6 +151,7 @@ export interface ILines {
     indices: Uint16Array;
     colors?: Float32Array;
     lineWidth: number;
+    bounds: Uint16Array;
 }
 /**
  * Point cloud data.
