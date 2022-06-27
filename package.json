@@ -3,6 +3,7 @@
   "version": "4.0.1",
   "description": "Tools for converting Autodesk Forge file formats.",
   "main": "lib/index.js",
+  "types": "lib/index.d.ts",
   "bin": {
     "forge-convert": "./bin/forge-convert.js"
   },
@@ -12,7 +13,7 @@
   "scripts": {
     "build": "tsc",
     "docs": "typedoc --out docs src",
-    "prepare": "tsc"
+    "install": "tsc"
   },
   "author": "Petr Broz <petr.broz@autodesk.com>",
   "license": "MIT",
