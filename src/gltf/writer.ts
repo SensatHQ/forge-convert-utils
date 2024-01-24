@@ -25,7 +25,7 @@ export interface IWriterOptions {
     skipUnusedUvs?: boolean; /** Skip unused tex coordinates. */
     center?: boolean; /** Move the model to origin. */
     log?: (msg: string) => void; /** Optional logging function. */
-    filter?: (dbid: number) => boolean;
+    filter?: (dbid: number, fragid: number) => boolean;
 }
 
 function hasTextures(material: IMF.Material | null): boolean {
@@ -54,6 +54,7 @@ export class Writer {
     protected bufferViewHashes = new Map<string, number>(); // List of hashes of existing gltf.BufferView objects, used for deduplication
     protected accessorHashes = new Map<string, number>(); // List of hashes of existing gltf.Accessor objects, used for deduplication
     protected pendingTasks: Promise<void>[] = [];
+    protected activeSvfMaterials: number[]; // List of SVF material IDs that are actually used during the glTF serialization (used to avoid serializing unused materials)
     protected stats: IWriterStats = {
         materialsDeduplicated: 0,
         meshesDeduplicated: 0,
@@ -75,7 +76,7 @@ export class Writer {
             skipUnusedUvs: !!options.skipUnusedUvs,
             center: !!options.center,
             log: (options && options.log) || function (msg: string) {},
-            filter: options && options.filter || ((dbid: number) => true)
+            filter: options && options.filter || ((dbid: number, fragid: number) => true)
         };
 
         // All these properties will be properly initialized in the 'reset' call
@@ -83,6 +84,7 @@ export class Writer {
         this.bufferStream = null;
         this.bufferSize = 0;
         this.baseDir = '';
+        this.activeSvfMaterials = [];
     }
 
     /**
@@ -151,6 +153,7 @@ export class Writer {
         this.bufferViewHashes = new Map<string, number>();
         this.accessorHashes = new Map<string, number>();
         this.pendingTasks = [];
+        this.activeSvfMaterials = [];
         this.stats = {
             materialsDeduplicated: 0,
             meshesDeduplicated: 0,
@@ -213,7 +216,7 @@ export class Writer {
                         default:    // "meter" / "m"
                             scale = 1.0;
                     }
-    
+
                     rootNode.matrix = [
                         left[0] * scale, up[0] * scale, front[0] * scale, 0,
                         left[1] * scale, up[1] * scale, front[1] * scale, 0,
@@ -253,7 +256,7 @@ export class Writer {
             if (fragment.kind !== IMF.NodeKind.Object) {
                 continue;
             }
-            if (!filter(fragment.dbid)) {
+            if (!filter(fragment.dbid, i)) {
                 continue;
             }
             const material = imf.getMaterial(fragment.material);
@@ -270,8 +273,8 @@ export class Writer {
         if (this.options.deduplicate) {
             const hashes: string[] = [];
             const newMaterialIndices = new Uint16Array(imf.getMaterialCount());
-            for (let i = 0, len = imf.getMaterialCount(); i < len; i++) {
-                const material = imf.getMaterial(i);
+            for (const [i, activeMaterialID] of this.activeSvfMaterials.entries()) {
+                const material = imf.getMaterial(activeMaterialID);
                 const hash = this.computeMaterialHash(material);
                 const match = hashes.indexOf(hash);
                 if (match === -1) {
@@ -295,8 +298,8 @@ export class Writer {
                 }
             }
         } else {
-            for (let i = 0, len = imf.getMaterialCount(); i < len; i++) {
-                const material = imf.getMaterial(i);
+            for (const activeMaterialID of this.activeSvfMaterials) {
+                const material = imf.getMaterial(activeMaterialID);
                 const mat = this.createMaterial(material, imf);
                 manifestMaterials.push(mat);
             }
@@ -350,8 +353,13 @@ export class Writer {
                 break;
         }
         if (mesh && mesh.primitives.length > 0) {
+            let materialID = this.activeSvfMaterials.indexOf(fragment.material);
+            if (materialID === -1) {
+                materialID = this.activeSvfMaterials.length;
+                this.activeSvfMaterials.push(fragment.material);
+            }
             for (const primitive of mesh.primitives) {
-                primitive.material = fragment.material;
+                primitive.material = materialID;
             }
             node.mesh = this.addMesh(mesh);
         }
@@ -385,7 +393,7 @@ export class Writer {
 
         // Output index buffer
         const indices = geometry.getIndices();
-        const indexBufferView = this.createBufferView(Buffer.from(indices.buffer));
+        const indexBufferView = this.createBufferView(Buffer.from(indices.buffer, indices.byteOffset, indices.byteLength));
         const indexBufferViewID = this.addBufferView(indexBufferView);
         const indexAccessor = this.createAccessor(indexBufferViewID, 5123, indexBufferView.byteLength / 2, 'SCALAR');
         const indexAccessorID = this.addAccessor(indexAccessor);
@@ -393,7 +401,7 @@ export class Writer {
         // Output vertex buffer
         const vertices = geometry.getVertices();
         const positionBounds = this.computeBoundsVec3(vertices); // Compute bounds manually, just in case
-        const positionBufferView = this.createBufferView(Buffer.from(vertices.buffer));
+        const positionBufferView = this.createBufferView(Buffer.from(vertices.buffer, vertices.byteOffset, vertices.byteLength));
         const positionBufferViewID = this.addBufferView(positionBufferView);
         const positionAccessor = this.createAccessor(positionBufferViewID, 5126, positionBufferView.byteLength / 4 / 3, 'VEC3', positionBounds.min, positionBounds.max/*[fragmesh.min.x, fragmesh.min.y, fragmesh.min.z], [fragmesh.max.x, fragmesh.max.y, fragmesh.max.z]*/);
         const positionAccessorID = this.addAccessor(positionAccessor);
@@ -402,7 +410,7 @@ export class Writer {
         let normalAccessorID: number | undefined = undefined;
         const normals = geometry.getNormals();
         if (normals) {
-            const normalBufferView = this.createBufferView(Buffer.from(normals.buffer));
+            const normalBufferView = this.createBufferView(Buffer.from(normals.buffer, normals.byteOffset, normals.byteLength));
             const normalBufferViewID = this.addBufferView(normalBufferView);
             const normalAccessor = this.createAccessor(normalBufferViewID, 5126, normalBufferView.byteLength / 4 / 3, 'VEC3');
             normalAccessorID = this.addAccessor(normalAccessor);
@@ -412,7 +420,7 @@ export class Writer {
         let colorAccessorID: number | undefined = undefined;
         const colors = geometry.getColors();
         if (colors) {
-            const colorBufferView = this.createBufferView(Buffer.from(colors.buffer));
+            const colorBufferView = this.createBufferView(Buffer.from(colors.buffer, colors.byteOffset, colors.byteLength));
             const colorBufferViewID = this.addBufferView(colorBufferView);
             const colorAccessor = this.createAccessor(colorBufferViewID, 5126, colorBufferView.byteLength / 4 / 4, 'VEC4');
             colorAccessorID = this.addAccessor(colorAccessor);
@@ -422,7 +430,7 @@ export class Writer {
         let uvAccessorID: number | undefined = undefined;
         if (geometry.getUvChannelCount() > 0 && outputUvs) {
             const uvs = geometry.getUvs(0);
-            const uvBufferView = this.createBufferView(Buffer.from(uvs.buffer));
+            const uvBufferView = this.createBufferView(Buffer.from(uvs.buffer, uvs.byteOffset, uvs.byteLength));
             const uvBufferViewID = this.addBufferView(uvBufferView);
             const uvAccessor = this.createAccessor(uvBufferViewID, 5126, uvBufferView.byteLength / 4 / 2, 'VEC2');
             uvAccessorID = this.addAccessor(uvAccessor);
@@ -460,7 +468,7 @@ export class Writer {
 
         // Output index buffer
         const {indices, drawMode} = this.computeIndicesForPolylines(geometry);
-        const indexBufferView = this.createBufferView(Buffer.from(indices.buffer));
+        const indexBufferView = this.createBufferView(Buffer.from(indices.buffer, indices.byteOffset, indices.byteLength));
         const indexBufferViewID = this.addBufferView(indexBufferView);
         const indexAccessor = this.createAccessor(indexBufferViewID, 5123, indexBufferView.byteLength / 2, 'SCALAR');
         const indexAccessorID = this.addAccessor(indexAccessor);
@@ -468,7 +476,7 @@ export class Writer {
         // Output vertex buffer
         const vertices = geometry.getVertices();
         const positionBounds = this.computeBoundsVec3(vertices);
-        const positionBufferView = this.createBufferView(Buffer.from(vertices.buffer));
+        const positionBufferView = this.createBufferView(Buffer.from(vertices.buffer, vertices.byteOffset, vertices.byteLength));
         const positionBufferViewID = this.addBufferView(positionBufferView);
         const positionAccessor = this.createAccessor(positionBufferViewID, 5126, positionBufferView.byteLength / 4 / 3, 'VEC3', positionBounds.min, positionBounds.max);
         const positionAccessorID = this.addAccessor(positionAccessor);
@@ -477,7 +485,7 @@ export class Writer {
         let colorAccessorID: number | undefined = undefined;
         const colors = geometry.getColors();
         if (colors) {
-            const colorBufferView = this.createBufferView(Buffer.from(colors.buffer));
+            const colorBufferView = this.createBufferView(Buffer.from(colors.buffer, colors.byteOffset, colors.byteLength));
             const colorBufferViewID = this.addBufferView(colorBufferView);
             const colorAccessor = this.createAccessor(colorBufferViewID, 5126, colorBufferView.byteLength / 4 / 3, 'VEC3');
             colorAccessorID = this.addAccessor(colorAccessor);
@@ -510,7 +518,7 @@ export class Writer {
         // Output vertex buffer
         const vertices = geometry.getVertices();
         const positionBounds = this.computeBoundsVec3(vertices);
-        const positionBufferView = this.createBufferView(Buffer.from(vertices.buffer));
+        const positionBufferView = this.createBufferView(Buffer.from(vertices.buffer, vertices.byteOffset, vertices.byteLength));
         const positionBufferViewID = this.addBufferView(positionBufferView);
         const positionAccessor = this.createAccessor(positionBufferViewID, 5126, positionBufferView.byteLength / 4 / 3, 'VEC3', positionBounds.min, positionBounds.max);
         const positionAccessorID = this.addAccessor(positionAccessor);
@@ -519,7 +527,7 @@ export class Writer {
         let colorAccessorID: number | undefined = undefined;
         const colors = geometry.getColors();
         if (colors) {
-            const colorBufferView = this.createBufferView(Buffer.from(colors.buffer));
+            const colorBufferView = this.createBufferView(Buffer.from(colors.buffer, colors.byteOffset, colors.byteLength));
             const colorBufferViewID = this.addBufferView(colorBufferView);
             const colorAccessor = this.createAccessor(colorBufferViewID, 5126, colorBufferView.byteLength / 4 / 3, 'VEC3');
             colorAccessorID = this.addAccessor(colorAccessor);
@@ -652,7 +660,7 @@ export class Writer {
             pbrMetallicRoughness: {
                 baseColorFactor: [diffuse.x, diffuse.y, diffuse.z, 1.0],
                 metallicFactor: mat.metallic,
-                roughnessFactor: mat.roughness
+                roughnessFactor: (mat.roughness > 1.0) ? 1.0 : mat.roughness
             }
         };
         if (!isUndefined(mat.opacity) && mat.opacity < 1.0 && material.pbrMetallicRoughness.baseColorFactor) {
@@ -791,3 +799,4 @@ export class Writer {
 
     }
 }
+
