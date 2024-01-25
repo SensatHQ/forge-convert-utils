@@ -91,6 +91,6 @@ program
     })
     .parse(process.argv);
 
-if (program.args.length === 0) {
+if (program.rawArgs.length === 0) {
     program.help();
 }
